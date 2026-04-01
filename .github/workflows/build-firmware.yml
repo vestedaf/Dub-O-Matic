@@ -34,11 +34,14 @@ jobs:
         run: make -C ../DaisyExamples/DaisySP
 
       - name: Build Tap-O-Matic firmware
+        shell: bash
         run: |
-          make clean
-          make
+          set -o pipefail
+          make clean 2>&1 | tee build.log
+          make 2>&1 | tee -a build.log
 
       - name: Upload firmware artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tap-o-matic-firmware
@@ -46,3 +49,4 @@ jobs:
             build/*.bin
             build/*.elf
             build/*.map
+            build.log
