@@ -6,7 +6,14 @@ USE_DAISYSP_LGPL=1
 
 # Sources
 CPP_SOURCES = time_machine_hardware.cpp TimeMachine.cpp
-LDFLAGS = -u _printf_float
+
+# Pulling in float printf support costs several KB of flash.
+# Keep it opt-in so release builds still fit after the reverb addition.
+ENABLE_FLOAT_PRINTF ?= 0
+ifeq ($(ENABLE_FLOAT_PRINTF),1)
+LDFLAGS += -u _printf_float
+endif
+
 OPT = -Os
 
 # Library Locations
