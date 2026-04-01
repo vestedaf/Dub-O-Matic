@@ -621,7 +621,7 @@ public:
     DynamicsProcessor dynamics;
 
     // DaisySP-LGPL reverb
-    ReverbSc reverb;
+    daisysp::ReverbSc reverb;
 
     // Feedback dynamics tracking (for logging/debugging)
     float lastUserFeedback = 0.0f;
