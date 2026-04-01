@@ -1,0 +1,46 @@
+name: Build Daisy Firmware
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout firmware repo
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make git gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Fetch Daisy dependencies
+        run: |
+          mkdir -p ../DaisyExamples
+          git clone --depth 1 https://github.com/electro-smith/libDaisy.git ../DaisyExamples/libDaisy
+          git clone --depth 1 --recurse-submodules https://github.com/electro-smith/DaisySP.git ../DaisyExamples/DaisySP
+
+      - name: Build libDaisy
+        run: make -C ../DaisyExamples/libDaisy
+
+      - name: Build DaisySP
+        run: make -C ../DaisyExamples/DaisySP
+
+      - name: Build Tap-O-Matic firmware
+        run: |
+          make clean
+          make
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tap-o-matic-firmware
+          path: |
+            build/*.bin
+            build/*.elf
+            build/*.map

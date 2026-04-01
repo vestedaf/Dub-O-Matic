@@ -152,8 +152,8 @@ float DSY_SDRAM_BSS buffer[(48000 * TIME_SECONDS + BUFFER_WIGGLE_ROOM_SAMPLES) *
 ControlHandler time("time");
 ControlHandler feedback("feedback");
 ControlHandler spread("spread");
-ControlHandler highpass("highpass");
-ControlHandler lowpass("lowpass");
+ControlHandler bpf("bpf");
+ControlHandler reverb("reverb");
 ControlHandler levels[N_TAPS];
 ControlHandler pans[N_TAPS];
 
@@ -188,13 +188,15 @@ void updateControlHandlers()
 	spread.cv = clamp(hw.GetAdcValue(SPREAD_CV) - spread.cvOffset, -1.0, 1.0);
 	spread.value = fourPointWarp(spread.knobSlew.Process(spread.knob)) + spread.cvSlew.Process(spread.cv);
 
-	lowpass.knob = 1.0f - hw.GetLowpassKnob();
-	lowpass.cv = clamp(hw.GetAdcValue(LOWPASS_CV) - lowpass.cvOffset, -1.0, 1.0);
-	lowpass.value = clamp(lowpass.knobSlew.Process(lowpass.knob) + lowpass.cvSlew.Process(lowpass.cv), 0.0, 1.0);
+	// BPF uses the former lowpass knob/CV path.
+	bpf.knob = 1.0f - hw.GetLowpassKnob();
+	bpf.cv = clamp(hw.GetAdcValue(LOWPASS_CV) - bpf.cvOffset, -1.0, 1.0);
+	bpf.value = clamp(bpf.knobSlew.Process(bpf.knob) + bpf.cvSlew.Process(bpf.cv), 0.0, 1.0);
 
-	highpass.knob = 1.0f - hw.GetHighpassKnob();
-	highpass.cv = clamp(hw.GetAdcValue(HIGHPASS_CV) - highpass.cvOffset, -1.0, 1.0);
-	highpass.value = clamp(highpass.knobSlew.Process(highpass.knob) + highpass.cvSlew.Process(highpass.cv), 0.0, 1.0);
+	// Reverb uses the freed former highpass knob/CV path.
+	reverb.knob = 1.0f - hw.GetHighpassKnob();
+	reverb.cv = clamp(hw.GetAdcValue(HIGHPASS_CV) - reverb.cvOffset, -1.0, 1.0);
+	reverb.value = clamp(reverb.knobSlew.Process(reverb.knob) + reverb.cvSlew.Process(reverb.cv), 0.0, 1.0);
 
 	// Handle the levels and pans.
 	for (int i = 0; i < N_TAPS; i++)
@@ -262,8 +264,8 @@ void audioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 		}
 	}
 
-	// Set global time machine parameters (feedback, filters, modes)
-	timeMachine.Set(feedback.value, highpass.value, lowpass.value, feedbackModeSwitch.Read(), filterPositionSwitch.Read());
+	// Set global time machine parameters (feedback, BPF, reverb, modes)
+	timeMachine.Set(feedback.value, bpf.value, reverb.value, feedbackModeSwitch.Read(), filterPositionSwitch.Read());
 
 	// Set dry tap (tap 0) with pan
 	float dryPanL, dryPanR;
@@ -329,8 +331,8 @@ bool shouldCalibrate()
 	hw.PrintLine("  Spread:   " FLT_FMT(4) " %s", FLT_VAR(4, spreadCv), isCvCloseToZero(spreadCv) ? "OK" : "FAIL");
 	hw.PrintLine("  Time:     " FLT_FMT(4) " %s", FLT_VAR(4, timeCv), isCvCloseToZero(timeCv) ? "OK" : "FAIL");
 	hw.PrintLine("  Feedback: " FLT_FMT(4) " %s", FLT_VAR(4, feedbackCv), isCvCloseToZero(feedbackCv) ? "OK" : "FAIL");
-	hw.PrintLine("  Highpass: " FLT_FMT(4) " %s", FLT_VAR(4, highpassCv), isCvCloseToZero(highpassCv) ? "OK" : "FAIL");
-	hw.PrintLine("  Lowpass:  " FLT_FMT(4) " %s", FLT_VAR(4, lowpassCv), isCvCloseToZero(lowpassCv) ? "OK" : "FAIL");
+	hw.PrintLine("  Reverb:   " FLT_FMT(4) " %s", FLT_VAR(4, highpassCv), isCvCloseToZero(highpassCv) ? "OK" : "FAIL");
+	hw.PrintLine("  BPF:      " FLT_FMT(4) " %s", FLT_VAR(4, lowpassCv), isCvCloseToZero(lowpassCv) ? "OK" : "FAIL");
 	hw.PrintLine("  LevelDry: " FLT_FMT(4) " %s", FLT_VAR(4, levelDryCv), isCvCloseToZero(levelDryCv) ? "OK" : "FAIL");
 
 	if (!isCvCloseToZero(spreadCv)) return false;
@@ -351,8 +353,8 @@ bool shouldCalibrate()
 	hw.PrintLine("  Time:     " FLT_FMT(4) " %s", FLT_VAR(4, timeKnob), minMaxKnob(1.0 - timeKnob) >= 0.95 ? "OK" : "FAIL");
 	hw.PrintLine("  Spread:   " FLT_FMT(4) " %s", FLT_VAR(4, spreadKnob), minMaxKnob(1.0 - spreadKnob) >= 0.95 ? "OK" : "FAIL");
 	hw.PrintLine("  Feedback: " FLT_FMT(4) " %s", FLT_VAR(4, feedbackKnob), minMaxKnob(1.0 - feedbackKnob) >= 0.95 ? "OK" : "FAIL");
-	hw.PrintLine("  Lowpass:  " FLT_FMT(4) " %s", FLT_VAR(4, lowpassKnob), minMaxKnob(1.0 - lowpassKnob) >= 0.95 ? "OK" : "FAIL");
-	hw.PrintLine("  Highpass: " FLT_FMT(4) " %s", FLT_VAR(4, highpassKnob), minMaxKnob(1.0 - highpassKnob) >= 0.95 ? "OK" : "FAIL");
+	hw.PrintLine("  BPF:      " FLT_FMT(4) " %s", FLT_VAR(4, lowpassKnob), minMaxKnob(1.0 - lowpassKnob) >= 0.95 ? "OK" : "FAIL");
+	hw.PrintLine("  Reverb:   " FLT_FMT(4) " %s", FLT_VAR(4, highpassKnob), minMaxKnob(1.0 - highpassKnob) >= 0.95 ? "OK" : "FAIL");
 
 	if (minMaxKnob(1.0 - timeKnob) < 0.95) return false;
 	if (minMaxKnob(1.0 - spreadKnob) < 0.95) return false;
@@ -488,8 +490,8 @@ void applyCalibrationOffsets(const CvCalibrationData &calibration)
 	time.cvOffset = calibration.timeCvOffset;
 	spread.cvOffset = calibration.spreadCvOffset;
 	feedback.cvOffset = calibration.feedbackCvOffset;
-	highpass.cvOffset = calibration.highpassCvOffset;
-	lowpass.cvOffset = calibration.lowpassCvOffset;
+	reverb.cvOffset = calibration.highpassCvOffset;
+	bpf.cvOffset = calibration.lowpassCvOffset;
 
 	for (int i = 0; i < N_TAPS; i++)
 	{
@@ -511,8 +513,8 @@ void logControlDiagnostics()
 	hw.PrintLine("  Time:     " FLT_FMT(6), FLT_VAR(6, hw.GetTimeKnob()));
 	hw.PrintLine("  Spread:   " FLT_FMT(6), FLT_VAR(6, hw.GetSpreadKnob()));
 	hw.PrintLine("  Feedback: " FLT_FMT(6), FLT_VAR(6, hw.GetFeedbackKnob()));
-	hw.PrintLine("  Lowpass:  " FLT_FMT(6), FLT_VAR(6, hw.GetLowpassKnob()));
-	hw.PrintLine("  Highpass: " FLT_FMT(6), FLT_VAR(6, hw.GetHighpassKnob()));
+	hw.PrintLine("  BPF:      " FLT_FMT(6), FLT_VAR(6, hw.GetLowpassKnob()));
+	hw.PrintLine("  Reverb:   " FLT_FMT(6), FLT_VAR(6, hw.GetHighpassKnob()));
 	hw.PrintLine("");
 
 	// CV inputs: raw values
@@ -520,8 +522,8 @@ void logControlDiagnostics()
 	hw.PrintLine("  Time CV:     " FLT_FMT(6), FLT_VAR(6, hw.GetAdcValue(TIME_CV)));
 	hw.PrintLine("  Spread CV:   " FLT_FMT(6), FLT_VAR(6, hw.GetAdcValue(SPREAD_CV)));
 	hw.PrintLine("  Feedback CV: " FLT_FMT(6), FLT_VAR(6, hw.GetAdcValue(FEEDBACK_CV)));
-	hw.PrintLine("  Lowpass CV:  " FLT_FMT(6), FLT_VAR(6, hw.GetAdcValue(LOWPASS_CV)));
-	hw.PrintLine("  Highpass CV: " FLT_FMT(6), FLT_VAR(6, hw.GetAdcValue(HIGHPASS_CV)));
+	hw.PrintLine("  BPF CV:      " FLT_FMT(6), FLT_VAR(6, hw.GetAdcValue(LOWPASS_CV)));
+	hw.PrintLine("  Reverb CV:   " FLT_FMT(6), FLT_VAR(6, hw.GetAdcValue(HIGHPASS_CV)));
 	hw.PrintLine("  Dry CV:      " FLT_FMT(6), FLT_VAR(6, hw.GetAdcValue(LEVEL_DRY_CV)));
 	hw.PrintLine("");
 
@@ -564,8 +566,8 @@ void logState()
 	spread.Dump();
 	time.Dump();
 	feedback.Dump();
-	highpass.Dump();
-	lowpass.Dump();
+	bpf.Dump();
+	reverb.Dump();
 
 	// hw.PrintLine("");
 

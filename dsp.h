@@ -613,11 +613,15 @@ public:
 
     // Parameters
     float feedback;
+    float reverbAmount;
     bool isLastTapFeedback;
     bool isPreFilter;
 
     // Dynamics processor for output limiting
     DynamicsProcessor dynamics;
+
+    // DaisySP-LGPL reverb
+    ReverbSc reverb;
 
     // Feedback dynamics tracking (for logging/debugging)
     float lastUserFeedback = 0.0f;
@@ -691,16 +695,24 @@ public:
         // Initialize dynamics
         dynamics.Init(sampleRate);
 
+        // Initialize reverb
+        reverb.Init(sampleRate);
+        reverb.SetFeedback(constants::REVERB_FEEDBACK_MIN);
+        reverb.SetLpFreq(constants::REVERB_LPFREQ_MAX_HZ);
+
         // Default parameters
         feedback = 0.0f;
+        reverbAmount = 0.0f;
         isLastTapFeedback = false;
         isPreFilter = false;
     }
 
     // Set global parameters (called once per block, not per tap)
-    void Set(float feedback, float highFc, float lowFc, bool isLastTapFeedback, bool isPreFilter)
+    void Set(float feedback, float bpfFc, float reverbCtrl, bool isLastTapFeedback, bool isPreFilter)
     {
         this->feedback = feedback;
+        reverbCtrl = clamp(reverbCtrl, 0.0f, 1.0f);
+        this->reverbAmount = powf(reverbCtrl, constants::REVERB_CONTROL_CURVE);
         this->isLastTapFeedback = isLastTapFeedback;
         this->isPreFilter = isPreFilter;
 
@@ -709,18 +721,21 @@ public:
         float minFreq = 20.0f;
         float maxFreq = 22000.0f;  // Close to Nyquist (24kHz at 48kHz sample rate)
         float freqRatio = maxFreq / minFreq;
-        float lowpassHz = minFreq * powf(freqRatio, lowFc);
-        float highpassHz = minFreq * powf(freqRatio, highFc);
+        float bpfHz = minFreq * powf(freqRatio, clamp(bpfFc, 0.0f, 1.0f));
 
-        // Set filter frequencies (same for L/R)
-        lowpassL.SetCutoff(lowpassHz);
-        lowpassR.SetCutoff(lowpassHz);
-        highpassL.SetCutoff(highpassHz);
-        highpassR.SetCutoff(highpassHz);
-        fbLowpassL.SetCutoff(lowpassHz);
-        fbLowpassR.SetCutoff(lowpassHz);
-        fbHighpassL.SetCutoff(highpassHz);
-        fbHighpassR.SetCutoff(highpassHz);
+        // Set BPF center frequencies (same for L/R)
+        lowpassL.SetCutoff(bpfHz);
+        lowpassR.SetCutoff(bpfHz);
+        fbLowpassL.SetCutoff(bpfHz);
+        fbLowpassR.SetCutoff(bpfHz);
+
+        // Reverb macro: amount controls both send and tail length.
+        float reverbFeedback = constants::REVERB_FEEDBACK_MIN
+                             + (constants::REVERB_FEEDBACK_MAX - constants::REVERB_FEEDBACK_MIN) * reverbAmount;
+        float reverbLpHz = constants::REVERB_LPFREQ_MAX_HZ
+                         - (constants::REVERB_LPFREQ_MAX_HZ - constants::REVERB_LPFREQ_MIN_HZ) * reverbAmount;
+        reverb.SetFeedback(reverbFeedback);
+        reverb.SetLpFreq(reverbLpHz);
     }
 
     // Set dry tap (tap 0)
@@ -845,32 +860,22 @@ public:
 
         if (isPreFilter)
         {
-            // Highpass then lowpass on wet signal
-            highpassL.Process(wetL);
-            highpassR.Process(wetR);
-            wetL = highpassL.hp;
-            wetR = highpassR.hp;
-
+            // Apply BPF on wet signal
             lowpassL.Process(wetL);
             lowpassR.Process(wetR);
-            wetL = lowpassL.lp;
-            wetR = lowpassR.lp;
+            wetL = lowpassL.bp;
+            wetR = lowpassR.bp;
 
             if (isLastTapFeedback)
             {
-                // Separate filtering for last tap feedback
+                // Separate BPF for last tap feedback
                 fbL = fbDcblkL.Process(lastTapL);
                 fbR = fbDcblkR.Process(lastTapR);
 
-                fbHighpassL.Process(fbL);
-                fbHighpassR.Process(fbR);
-                fbL = fbHighpassL.hp;
-                fbR = fbHighpassR.hp;
-
                 fbLowpassL.Process(fbL);
                 fbLowpassR.Process(fbR);
-                fbL = fbLowpassL.lp;
-                fbR = fbLowpassR.lp;
+                fbL = fbLowpassL.bp;
+                fbR = fbLowpassR.bp;
             }
             else
             {
@@ -895,15 +900,10 @@ public:
             fbL = fbDcblkL.Process(fbL);
             fbR = fbDcblkR.Process(fbR);
 
-            fbHighpassL.Process(fbL);
-            fbHighpassR.Process(fbR);
-            fbL = fbHighpassL.hp;
-            fbR = fbHighpassR.hp;
-
             fbLowpassL.Process(fbL);
             fbLowpassR.Process(fbR);
-            fbL = fbLowpassL.lp;
-            fbR = fbLowpassR.lp;
+            fbL = fbLowpassL.bp;
+            fbR = fbLowpassR.bp;
         }
 
         // === 5. Apply feedback with dynamic ceiling ===
@@ -949,6 +949,13 @@ public:
         // Final output: wet + dry
         float outL = wetL + dryL;
         float outR = wetR + dryR;
+
+        // Reverb send from final mix, then blend return
+        float revWetL = 0.0f;
+        float revWetR = 0.0f;
+        reverb.Process(outL * reverbAmount, outR * reverbAmount, &revWetL, &revWetR);
+        outL += revWetL * constants::REVERB_RETURN_GAIN;
+        outR += revWetR * constants::REVERB_RETURN_GAIN;
 
         // Track min/max before clamping (for verifying dynamics processing)
         if (outL < outputMinL) outputMinL = outL;

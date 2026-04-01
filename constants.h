@@ -117,6 +117,24 @@ constexpr float FEEDBACK_GAIN_SCALE = 2.0f;          // Multiplier on knob value
 constexpr float FEEDBACK_MAX = 3.0f;                 // Maximum feedback value
 
 // -----------------------------------------------------------------------------
+// Reverb (DaisySP-LGPL ReverbSc)
+// -----------------------------------------------------------------------------
+
+// Knob response for reverb macro amount
+constexpr float REVERB_CONTROL_CURVE = 1.5f;
+
+// ReverbSc feedback range. Keep below 1.0 to avoid endless tails.
+constexpr float REVERB_FEEDBACK_MIN = 0.72f;
+constexpr float REVERB_FEEDBACK_MAX = 0.97f;
+
+// Tone damping via ReverbSc lowpass frequency.
+constexpr float REVERB_LPFREQ_MIN_HZ = 2500.0f;
+constexpr float REVERB_LPFREQ_MAX_HZ = 12000.0f;
+
+// Return scaling after ReverbSc processing.
+constexpr float REVERB_RETURN_GAIN = 0.6f;
+
+// -----------------------------------------------------------------------------
 // Dynamics Processor (bespoke ducking/limiting system)
 // -----------------------------------------------------------------------------
 
