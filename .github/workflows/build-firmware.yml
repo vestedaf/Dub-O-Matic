@@ -44,9 +44,9 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          error_line="$(grep -m 1 -E 'fatal error:|error:|undefined reference|collect2:|ld returned' build.log || true)"
+          error_line="$(grep -m 1 -E 'fatal error:|undefined reference|cannot find|No such file or directory|multiple definition|region .+ overflowed|collect2:|error: ld returned|ld: error:' build.log || true)"
           if [ -z "$error_line" ]; then
-            error_line="$(tail -n 1 build.log)"
+            error_line="$(tail -n 8 build.log | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
           fi
           echo "::error title=Firmware build failure::$error_line"
           {
