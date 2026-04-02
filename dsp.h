@@ -473,11 +473,9 @@ public:
         // Use target delay position (posB) since that's where we're transitioning to
         float lookaheadPeak = GetLookaheadPeak(buffer, posB, writePos);
 
-        // Track loudness with lookahead for predictive dynamics
-        float maxAmp = fmaxf(ampL, ampR);
-        float scaledCurrent = fmaxf(fabsf(rawL), fabsf(rawR)) * maxAmp;
-        float scaledLookahead = lookaheadPeak * maxAmp;
-        loudness.Process(scaledCurrent, scaledLookahead);
+        // Track raw tap loudness for LEDs so their behavior matches the original firmware.
+        float rawCurrent = fmaxf(fabsf(rawL), fabsf(rawR));
+        loudness.Process(rawCurrent, lookaheadPeak);
     }
 };
 
