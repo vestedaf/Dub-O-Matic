@@ -2,9 +2,23 @@ name: Build Dub-O-Matic Firmware
 
 on:
   workflow_dispatch:
+    inputs:
+      firmware_variant:
+        description: "Firmware variant to build"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - A
+          - B
+          - C
   push:
-    branches: [ main, master ]
+    branches:
+      - "**"
   pull_request:
+    branches:
+      - "**"
 
 jobs:
   build:
@@ -33,14 +47,61 @@ jobs:
 
       - name: Build Dub-O-Matic firmware
         run: |
-          make clean
-          make
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            selection="${{ inputs.firmware_variant }}"
+          else
+            selection="all"
+          fi
+
+          if [ "$selection" = "all" ]; then
+            variants="A B C"
+          else
+            variants="$selection"
+          fi
+
+          mkdir -p artifacts
+          original_ref="${GITHUB_SHA}"
+
+          for variant in $variants; do
+            echo "Building variant: $variant"
+            case "$variant" in
+              A)
+                label="Tap-o-Matic"
+                git checkout --force firmware-A-baseline
+                make clean
+                make
+                ;;
+              B)
+                label="Dub_Machine-Reverb"
+                git checkout --force "$original_ref"
+                make clean
+                make FIRMWARE_VARIANT=B
+                ;;
+              C)
+                label="Dub_Machine-Rev-Res"
+                git checkout --force "$original_ref"
+                make clean
+                make FIRMWARE_VARIANT=C
+                ;;
+              *)
+                echo "Unknown variant: $variant"
+                exit 1
+                ;;
+            esac
+
+            mkdir -p "artifacts/$label"
+            cp -v build/*.bin "artifacts/$label/" || true
+            cp -v build/*.elf "artifacts/$label/" || true
+            cp -v build/*.map "artifacts/$label/" || true
+          done
+
+          git checkout --force "$original_ref"
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v5
         with:
           name: dub-o-matic-firmware
           path: |
-            build/*.bin
-            build/*.elf
-            build/*.map
+            artifacts/**/*.bin
+            artifacts/**/*.elf
+            artifacts/**/*.map

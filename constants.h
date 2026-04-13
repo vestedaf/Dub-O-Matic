@@ -92,6 +92,13 @@ constexpr float PAN_LAW_EXPONENT = 1.5f;
 // 0.0 = no resonance (gentle 12dB/oct), 0.3 = tight response (~2-3dB peak)
 constexpr float FILTER_RESONANCE = 0.3f;
 
+// C firmware: lowpass lane can control resonance.
+constexpr float FILTER_RESONANCE_C_MIN = 0.15f;
+constexpr float FILTER_RESONANCE_C_MAX = 0.70f;
+
+// Hard-pickup threshold for shared knob takeover (normalized control space).
+constexpr float PICKUP_THRESHOLD = 0.015f;
+
 constexpr float SCHMIDT_HYSTERESIS = 0.333f;
 
 // -----------------------------------------------------------------------------

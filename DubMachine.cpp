@@ -175,6 +175,77 @@ bool setLeds = false;
 CpuLoadMeter cpuMeter;
 int droppedFrames = 0;
 
+#ifdef FW_VARIANT_C
+// C firmware: repurpose filter-position switch to choose lowpass-lane destination.
+// Default mapping: switch up/high = resonance target, down/low = reverb target.
+#ifndef C_RESONANCE_WHEN_SWITCH_HIGH
+#define C_RESONANCE_WHEN_SWITCH_HIGH 1
+#endif
+
+bool sharedFilterStateInitialized = false;
+bool sharedFilterResonanceTarget = false;
+bool sharedFilterPickupArmed = false;
+float sharedFilterPrevControl = 0.0f;
+float sharedFilterReverbLatched = 0.0f;
+float sharedFilterResonanceLatched = 0.0f;
+
+bool isResonanceTargetSelected(bool switchState)
+{
+#if C_RESONANCE_WHEN_SWITCH_HIGH
+	return switchState;
+#else
+	return !switchState;
+#endif
+}
+
+void updateSharedFilterMacro(float sharedControl, bool switchState, float* reverbOut, float* resonanceOut)
+{
+	bool targetResonance = isResonanceTargetSelected(switchState);
+
+	if (!sharedFilterStateInitialized)
+	{
+		sharedFilterStateInitialized = true;
+		sharedFilterResonanceTarget = targetResonance;
+		sharedFilterPickupArmed = false;
+		sharedFilterPrevControl = sharedControl;
+		sharedFilterReverbLatched = sharedControl;
+		sharedFilterResonanceLatched = sharedControl;
+	}
+	else if (targetResonance != sharedFilterResonanceTarget)
+	{
+		sharedFilterResonanceTarget = targetResonance;
+		sharedFilterPickupArmed = true;
+	}
+
+	float activeLatched = sharedFilterResonanceTarget ? sharedFilterResonanceLatched : sharedFilterReverbLatched;
+	bool crossedLatchedValue =
+		((sharedFilterPrevControl - activeLatched) * (sharedControl - activeLatched) <= 0.0f)
+		|| (fabsf(sharedControl - activeLatched) <= constants::PICKUP_THRESHOLD);
+
+	if (sharedFilterPickupArmed && crossedLatchedValue)
+	{
+		sharedFilterPickupArmed = false;
+	}
+
+	if (!sharedFilterPickupArmed)
+	{
+		if (sharedFilterResonanceTarget)
+		{
+			sharedFilterResonanceLatched = sharedControl;
+		}
+		else
+		{
+			sharedFilterReverbLatched = sharedControl;
+		}
+	}
+
+	sharedFilterPrevControl = sharedControl;
+
+	*reverbOut = sharedFilterReverbLatched;
+	*resonanceOut = sharedFilterResonanceLatched;
+}
+#endif
+
 
 void updateControlHandlers()
 {
@@ -267,8 +338,23 @@ void audioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 		leds[0].Update();
 	}
 
-	// Set global time machine parameters (feedback, BPF, reverb, modes)
+	// Set global time machine parameters.
+#ifdef FW_VARIANT_C
+	bool filterSwitchState = filterPositionSwitch.Read();
+	float reverbMacro = 0.0f;
+	float resonanceMacro = 0.0f;
+	updateSharedFilterMacro(reverb.value, filterSwitchState, &reverbMacro, &resonanceMacro);
+
+	// C firmware forces filter routing to pre. Switch is only for target selection.
+	timeMachine.SetWithResonance(feedback.value,
+		bpf.value,
+		reverbMacro,
+		resonanceMacro,
+		feedbackModeSwitch.Read(),
+		true);
+#else
 	timeMachine.Set(feedback.value, bpf.value, reverb.value, feedbackModeSwitch.Read(), filterPositionSwitch.Read());
+#endif
 
 	// Set dry tap (tap 0) with pan
 	float dryPanL, dryPanR;
@@ -559,6 +645,12 @@ void logState()
 	feedback.Dump();
 	bpf.Dump();
 	reverb.Dump();
+
+#ifdef FW_VARIANT_C
+	hw.PrintLine("C mode: %s  pickup:%s",
+		sharedFilterResonanceTarget ? "resonance" : "reverb",
+		sharedFilterPickupArmed ? "armed" : "locked");
+#endif
 
 	// hw.PrintLine("");
 

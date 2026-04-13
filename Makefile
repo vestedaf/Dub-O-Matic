@@ -1,5 +1,14 @@
 # Project Name
-TARGET = Dub-O-Matic
+# A is built from the firmware-A-baseline git tag.
+# This Makefile builds B (default) and C from current sources.
+FIRMWARE_VARIANT ?= B
+
+ifeq ($(FIRMWARE_VARIANT),C)
+TARGET = Dub-O-Matic-C
+CPPFLAGS += -DFW_VARIANT_C=1
+else
+TARGET = Dub-O-Matic-B
+endif
 
 USE_DAISYSP_LGPL=1
 #DEBUG=1

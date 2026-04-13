@@ -743,6 +743,31 @@ public:
         reverb.SetLpFreq(reverbLpHz);
     }
 
+    // C firmware: additional resonance control for the shared lowpass lane.
+    void SetWithResonance(float feedback,
+                          float bpfFc,
+                          float reverbCtrl,
+                          float resonanceCtrl,
+                          bool isLastTapFeedback,
+                          bool isPreFilter)
+    {
+        Set(feedback, bpfFc, reverbCtrl, isLastTapFeedback, isPreFilter);
+
+        float resonance = constants::FILTER_RESONANCE_C_MIN
+                        + (constants::FILTER_RESONANCE_C_MAX - constants::FILTER_RESONANCE_C_MIN)
+                        * clamp(resonanceCtrl, 0.0f, 1.0f);
+
+        lowpassL.SetResonance(resonance);
+        lowpassR.SetResonance(resonance);
+        highpassL.SetResonance(resonance);
+        highpassR.SetResonance(resonance);
+
+        fbLowpassL.SetResonance(resonance);
+        fbLowpassR.SetResonance(resonance);
+        fbHighpassL.SetResonance(resonance);
+        fbHighpassR.SetResonance(resonance);
+    }
+
     // Set dry tap (tap 0)
     void SetDryTap(float ampL, float ampR)
     {
