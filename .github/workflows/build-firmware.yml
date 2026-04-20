@@ -1,0 +1,56 @@
+name: Build Dub Machine Firmware
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout firmware repo
+        uses: actions/checkout@v5
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make git gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Fetch Daisy dependencies
+        run: |
+          mkdir -p ../DaisyExamples
+          git clone --depth 1 --recurse-submodules https://github.com/electro-smith/libDaisy.git ../DaisyExamples/libDaisy
+          git clone --depth 1 --recurse-submodules https://github.com/electro-smith/DaisySP.git ../DaisyExamples/DaisySP
+
+      - name: Build libDaisy
+        run: make -C ../DaisyExamples/libDaisy
+
+      - name: Build DaisySP
+        run: make -C ../DaisyExamples/DaisySP
+
+      - name: Build firmware
+        run: |
+          make clean
+          make
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts/Dub-Machine
+          cp -v build/*.bin artifacts/Dub-Machine/ || true
+          cp -v build/*.elf artifacts/Dub-Machine/ || true
+          cp -v build/*.map artifacts/Dub-Machine/ || true
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: Dub-Machine
+          path: |
+            artifacts/Dub-Machine/**/*.bin
+            artifacts/Dub-Machine/**/*.elf
+            artifacts/Dub-Machine/**/*.map

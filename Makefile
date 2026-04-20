@@ -1,5 +1,5 @@
 # Project Name
-TARGET = Tap-O-Matic
+TARGET = Dub-Machine
 
 USE_DAISYSP_LGPL=1
 #DEBUG=1
